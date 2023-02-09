@@ -1,0 +1,151 @@
+---
+  - name: Deploy a Python Application using Nginx
+    hosts: all
+    become: yes
+    tasks:
+    - name: Find out the OS of the machines
+      ansible.builtin.debug:
+        msg: "{{ansible_facts['os_family']}}"
+
+    - name: Upgrade all packages(Debian)
+      ansible.builtin.command:
+        apt "{{item}}" -y
+      with_items:
+        - update
+        - upgrade
+      when: ansible_facts['os_family']=="Debian"
+
+    - name: Upgrade all packages(REDHAT)
+      ansible.builtin.command:
+        yum "{{item}}" -y
+      with_items:
+        - update
+        - upgrade
+      when: ansible_facts['os_family']=="RedHat"
+
+    - name: Install Required softwares on Debian
+      ansible.builtin.apt:
+        name: "{{item}}"
+        state: present
+        update_cache: true
+        force_apt_get: yes
+      with_items:
+        - nginx
+        - python3
+        - python3-pip
+        #- gunicorn
+      when: ansible_facts['os_family']=="Debian"
+
+    - name: Install Required softwares on RedHat
+      ansible.builtin.yum:
+        name: "{{item}}"
+        state: present
+        update_cache: true
+      with_items:
+        - nginx
+        - python3
+        - python3-pip
+        - git
+        #- gunicorn
+      when: ansible_facts['os_family']=="RedHat"
+
+    - name: Copy config files to the Servers(Debian)
+      ansible.builtin.copy:
+        src: /home/ubuntu/config
+        dest: /etc/nginx/sites-enabled/config
+      when: ansible_facts['os_family']=="Debian"
+
+    - name: Copy config files to the Servers(RH)
+      ansible.builtin.copy:
+        src: /home/ubuntu/config
+        dest: /etc/nginx/config
+      when: ansible_facts['os_family']=="RedHat"
+    
+    - name: Disable NGINX default config (DB)
+      ansible.builtin.command:
+        unlink /etc/nginx/sites-enabled/default
+      when: ansible_facts['os_family']=="Debian"
+
+    - name: Disable NGINX default config (RH)
+      ansible.builtin.command:
+        unlink /etc/nginx/nginx.conf.default
+      when: ansible_facts['os_family']=="RedHat"
+      
+
+    - name: Check if your NGINX syntax is correct
+      ansible.builtin.command:
+        sudo nginx -t
+    
+    - name: Start NGINX Service
+      systemd:
+        name: nginx
+        state: reloaded
+
+    - name: Clone a github repository (Debian)
+      git:
+       repo: https://github.com/jbichene95/calculator.git
+       dest: /home/ubuntu/calculator
+       clone: yes
+       update: yes
+       force: true
+      when: ansible_facts['os_family']=="Debian"
+
+    - name: Clone a github repository (RH)
+      git:
+       repo: https://github.com/jbichene95/calculator.git
+       dest: /home/ec2-user/calculator
+       clone: yes
+       update: yes
+       force: true
+      when: ansible_facts['os_family']=="RedHat"
+
+    # - name: Clone git using command
+    #   command:
+    #     git clone https://github.com/jbichene95/calculator.git
+    #   when: ansible_facts['os_family']=="RedHat"
+
+    - name: Install specified python requirements(Debian)
+      ansible.builtin.command:
+        pip install -r /home/ubuntu/calculator/requirements.txt
+      when: ansible_facts['os_family']=="Debian"      
+
+    - name: Install specified python requirements(RH)
+      ansible.builtin.command:
+        pip install -r /home/ec2-user/calculator/requirements.txt
+      when: ansible_facts['os_family']=="RedHat"   
+
+    - name: Install Gunicorn using pip
+      ansible.builtin.command:
+        pip3 install gunicorn
+
+    - name: Edit your app.py file and edit this part(Debian)
+      ansible.builtin.lineinfile:
+        path: /home/ubuntu/calculator/app.py
+        search_string: "app.run(debug=True)"
+        line: '        app.run(host="0.0.0.0")'
+      when: ansible_facts['os_family']=="Debian"
+
+    - name: Edit your app.py file and edit this part(RH)
+      ansible.builtin.lineinfile:
+        path: /home/ec2-user/calculator/app.py
+        search_string: "app.run(debug=True)"
+        line: '        app.run(host="0.0.0.0")'
+      when: ansible_facts['os_family']=="RedHat"
+    
+    - name: Start up gunicorn workers(Debian)
+      ansible.builtin.command:
+        gunicorn --workers=3 app:app --daemon
+      args:
+        chdir: /home/ubuntu/calculator
+      when: ansible_facts['os_family']=="Debian"
+
+    - name: Start up gunicorn workers(RH)
+      ansible.builtin.command:
+        gunicorn --workers=3 app:app --daemon
+      args:
+        chdir: /home/ec2-user/calculator
+      when: ansible_facts['os_family']=="RedHat"
+
+    - name: Downgrade itsdangerous
+      ansible.builtin.command:
+        pip install itsdangerous==2.0.1
